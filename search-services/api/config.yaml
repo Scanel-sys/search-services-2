@@ -1,0 +1,5 @@
+log_level: DEBUG
+words_address: words:8080
+http_server:
+  address: api:1234
+  timeout: 5s
