@@ -3,12 +3,11 @@ package rest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"yadro.com/course/api/core"
 )
 
@@ -68,7 +67,7 @@ func NewNormHandler(log *slog.Logger, normalizer core.Normalizer) http.HandlerFu
 		out, err := normalizer.Norm(ctx, phrase)
 		if err != nil {
 
-			if status.Code(err) == codes.ResourceExhausted {
+			if errors.Is(err, core.ErrTooLongMessage) {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}

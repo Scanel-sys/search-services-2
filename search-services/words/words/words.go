@@ -2,7 +2,9 @@ package words
 
 import (
 	"log/slog"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/kljensen/snowball"
@@ -64,7 +66,6 @@ func Norm(phrase string) []string {
 
 	words := wordRegexp.FindAllString(phrase, -1)
 
-	result := make([]string, 0, averageRequestWords)
 	seen := make(map[string]struct{}, averageRequestWords)
 
 	for _, word := range words {
@@ -86,8 +87,7 @@ func Norm(phrase string) []string {
 		}
 
 		seen[stemmed] = struct{}{}
-		result = append(result, stemmed)
 	}
 
-	return result
+	return slices.Collect(maps.Keys(seen))
 }

@@ -5,14 +5,18 @@ import (
 	"log/slog"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"yadro.com/course/api/core"
 	wordspb "yadro.com/course/proto/words"
 )
 
 type Client struct {
 	log    *slog.Logger
 	client wordspb.WordsClient
+	conn   *grpc.ClientConn
 }
 
 func NewClient(address string, log *slog.Logger) (*Client, error) {
@@ -36,7 +40,16 @@ func NewClient(address string, log *slog.Logger) (*Client, error) {
 	return &Client{
 		log:    log,
 		client: client,
+		conn:   conn,
 	}, nil
+}
+
+func (c Client) Close() error {
+	if err := c.conn.Close(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (c Client) Norm(ctx context.Context, phrase string) ([]string, error) {
@@ -44,9 +57,15 @@ func (c Client) Norm(ctx context.Context, phrase string) ([]string, error) {
 	reply, err := c.client.Norm(ctx, request)
 
 	if err != nil {
-		slog.Error("Words Norm call failed", "error", err)
+		if status.Code(err) == codes.ResourceExhausted {
+			slog.Error("too long message received", "error", err)
+			return nil, core.ErrTooLongMessage
+		}
+
+		slog.Error("error calling Norm function", "error", err)
 		return nil, err
 	}
+
 	return reply.Words, nil
 }
 

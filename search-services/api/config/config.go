@@ -2,6 +2,7 @@ package config
 
 import (
 	"log"
+	"log/slog"
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
@@ -21,10 +22,11 @@ type HttpServerCfg struct {
 func MustLoad(configPath string) Config {
 	var cfg Config
 	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
-		log.Fatalf("cannot read config %q: %s", configPath, err)
+		slog.Error("error reading server config file:", "error", err)
 	}
 
 	if err := cleanenv.ReadEnv(&cfg); err != nil {
+		slog.Error("error reading server env:", "error", err)
 		log.Fatalf("cannot read env : %s", err)
 	}
 
