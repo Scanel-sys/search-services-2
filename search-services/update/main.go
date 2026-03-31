@@ -11,6 +11,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+	"yadro.com/course/closers"
 	updatepb "yadro.com/course/proto/update"
 	"yadro.com/course/update/adapters/db"
 	updategrpc "yadro.com/course/update/adapters/grpc"
@@ -59,6 +60,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("failed create Words client: %v", err)
 	}
+	defer closers.CloseOrLog(wordsAdapter, log)
 
 	updater, err := core.NewService(log, storage, xkcdAdapter, wordsAdapter, cfg.XKCD.Concurrency)
 	if err != nil {

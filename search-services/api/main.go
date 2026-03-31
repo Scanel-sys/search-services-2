@@ -14,6 +14,7 @@ import (
 	"yadro.com/course/api/adapters/words"
 	"yadro.com/course/api/config"
 	"yadro.com/course/api/core"
+	"yadro.com/course/closers"
 )
 
 func main() {
@@ -33,12 +34,14 @@ func main() {
 		log.Error("cannot init words adapter", "error", err)
 		os.Exit(1)
 	}
+	defer closers.CloseOrLog(wordsClient, log)
 
 	updateClient, err := update.NewClient(cfg.UpdateAddress, log)
 	if err != nil {
 		log.Error("cannot init words adapter", "error", err)
 		os.Exit(1)
 	}
+	defer closers.CloseOrLog(updateClient, log)
 
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/db/update", rest.NewUpdateHandler(log, updateClient))
