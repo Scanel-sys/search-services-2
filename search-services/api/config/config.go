@@ -8,15 +8,16 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
-type Config struct {
-	LogLevel     string        `yaml:"log_level" env:"LOG_LEVEL" env-default:"ERROR"`
-	WordsAddress string        `yaml:"words_address" env:"WORDS_ADDRESS" env-default:"localhost:81"`
-	HttpServer   HttpServerCfg `yaml:"http_server"`
+type HTTPConfig struct {
+	Address string        `yaml:"address" env:"API_ADDRESS" env-default:"localhost:80"`
+	Timeout time.Duration `yaml:"timeout" env:"API_TIMEOUT" env-default:"5s"`
 }
 
-type HttpServerCfg struct {
-	Address string        `yaml:"address" env:"HTTP_SERVER_ADDRESS" env-default:"localhost:80"`
-	Timeout time.Duration `yaml:"timeout" env:"HTTP_SERVER_TIMEOUT" env-default:"5s"`
+type Config struct {
+	LogLevel      string     `yaml:"log_level" env:"LOG_LEVEL" env-default:"DEBUG"`
+	HTTPConfig    HTTPConfig `yaml:"api_server"`
+	WordsAddress  string     `yaml:"words_address" env:"WORDS_ADDRESS" env-default:"words:81"`
+	UpdateAddress string     `yaml:"update_address" env:"UPDATE_ADDRESS" env-default:"update:82"`
 }
 
 func MustLoad(configPath string) Config {

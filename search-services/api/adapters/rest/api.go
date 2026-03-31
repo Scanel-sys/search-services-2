@@ -15,9 +15,15 @@ type pingResponse struct {
 	Replies map[string]string `json:"replies"`
 }
 
-type normResponse struct {
-	Words []string `json:"words"`
-	Total int      `json:"total"`
+type updateResponse struct {
+	WordsTotal    int `json:"words_total"`
+	WordsUnique   int `json:"words_unique"`
+	ComicsFetched int `json:"comics_fetched"`
+	ComicsTotal   int `json:"comics_total"`
+}
+
+type statusResponse struct {
+	Status core.UpdateStatus `json:"status"`
 }
 
 func NewPingHandler(log *slog.Logger, pingers map[string]core.Pinger) http.HandlerFunc {
@@ -52,40 +58,72 @@ func NewPingHandler(log *slog.Logger, pingers map[string]core.Pinger) http.Handl
 	}
 }
 
-func NewNormHandler(log *slog.Logger, normalizer core.Normalizer) http.HandlerFunc {
+func NewUpdateHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := updater.Update(r.Context()); err != nil {
+			log.Error("error while update", "error", err)
+			if errors.Is(err, core.ErrAlreadyExists) {
+				http.Error(w, err.Error(), http.StatusAccepted)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
+
+func NewUpdateStatsHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		phrase := r.URL.Query().Get("phrase")
-		if phrase == "" {
-			http.Error(w, "phrase is required", http.StatusBadRequest)
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		stats, err := updater.Stats(ctx)
+		if err != nil {
+			log.Error("cannot get stats", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
+		resp := updateResponse{
+			WordsTotal:    stats.WordsTotal,
+			WordsUnique:   stats.WordsUnique,
+			ComicsFetched: stats.ComicsFetched,
+			ComicsTotal:   stats.ComicsTotal,
+		}
 
-		out, err := normalizer.Norm(ctx, phrase)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			log.Error("cannot encode stats", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		}
+	}
+}
+
+func NewUpdateStatusHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		status, err := updater.Status(r.Context())
 		if err != nil {
-
-			if errors.Is(err, core.ErrTooLongMessage) {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-
-			log.Error("normalization failed", "error", err)
+			log.Error("cannot get status", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 
-		resp := normResponse{
-			Words: out,
-			Total: len(out),
+		log.Info("get status:", "status", status)
+
+		reply := statusResponse{
+			Status: status,
 		}
+		if err := json.NewEncoder(w).Encode(reply); err != nil {
+			log.Error("cannot encode status", "error", err)
+		}
+	}
+}
 
-		w.Header().Set("Content-Type", "application/json")
-
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			log.Error("cannot encode response", "error", err)
+func NewDropHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := updater.Drop(r.Context()); err != nil {
+			log.Error("drop failed", "error", err)
+			http.Error(w, "drop failed", http.StatusInternalServerError)
 			return
 		}
 	}

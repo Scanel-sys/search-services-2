@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"log/slog"
 	"net"
@@ -21,74 +20,62 @@ import (
 	"yadro.com/course/words/words"
 )
 
-const maxPhraseLen = 4096
+const maxPhraseLen = 20000
 
-type ServerConfig struct {
-	Port string `yaml:"port" env:"WORDS_GRPC_PORT" env-default:"8080"`
-}
-
-type Server struct {
+type server struct {
 	wordspb.UnimplementedWordsServer
 }
 
-func (s *Server) Ping(_ context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
+func (s *server) Ping(_ context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
-func (s *Server) Norm(ctx context.Context, in *wordspb.WordsRequest) (*wordspb.WordsReply, error) {
+func (s *server) Norm(ctx context.Context, in *wordspb.WordsRequest) (*wordspb.WordsReply, error) {
 
 	if len(in.Phrase) > maxPhraseLen {
 		return nil, status.Error(codes.ResourceExhausted, "phrase too large")
 	}
 
-	stemmedWords := words.Norm(in.Phrase)
-
-	return &wordspb.WordsReply{Words: stemmedWords}, nil
+	return &wordspb.WordsReply{Words: words.Norm(in.Phrase)}, nil
 }
 
-func parseServerConfig(configPath string, addrFlag string) (string, string, error) {
-	var cfg ServerConfig
+type Config struct {
+	Address string `yaml:"words_address" env:"WORDS_ADDRESS" env-default:"80"`
+}
+
+func parseConfig(configPath string) (Config, error) {
+	var cfg Config
 
 	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
-		return "", "", err
+		slog.Error("error reading server config:", "error", err)
 	}
 
 	if err := cleanenv.ReadEnv(&cfg); err != nil {
-		return "", "", err
+		slog.Error("error reading server env:", "error", err)
+		return Config{}, err
 	}
 
-	port := cfg.Port
-
-	if addrFlag == "" {
-		addrFlag = fmt.Sprintf(":%s", port)
-	}
-
-	return addrFlag, port, nil
+	return cfg, nil
 }
 
 func main() {
-	configPath := flag.String("config", "config.yaml", "config path")
-	addrFlag := flag.String("address", "", "server address")
-
+	var configPath string
+	flag.StringVar(&configPath, "config", "config.yaml", "server configuration file")
 	flag.Parse()
 
-	address, port, err := parseServerConfig(*configPath, *addrFlag)
+	cfg, err := parseConfig(configPath)
 
 	if err != nil {
-		log.Fatalf("Error parsing server config: %v", err)
+		log.Fatalf("error parsing config: %v", err)
 	}
-	slog.Info("server config",
-		"address", address,
-		"port", port,
-	)
 
-	listener, err := net.Listen("tcp", address)
+	listener, err := net.Listen("tcp", cfg.Address)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
 	s := grpc.NewServer()
-	wordspb.RegisterWordsServer(s, &Server{})
+	wordspb.RegisterWordsServer(s, &server{})
 	reflection.Register(s)
 
 	go func() {
