@@ -11,6 +11,7 @@ import (
 	"os/signal"
 
 	"yadro.com/course/api/adapters/rest"
+	"yadro.com/course/api/adapters/search"
 	"yadro.com/course/api/adapters/update"
 	"yadro.com/course/api/adapters/words"
 	"yadro.com/course/api/config"
@@ -22,6 +23,7 @@ func main() {
 	var configPath string
 	flag.StringVar(&configPath, "config", "config.yaml", "server configuration file")
 	flag.Parse()
+
 	cfg := config.MustLoad(configPath)
 
 	log := mustMakeLogger(cfg.LogLevel)
@@ -32,7 +34,6 @@ func main() {
 }
 
 func run(cfg config.Config, log *slog.Logger) error {
-
 	log.Info("starting server")
 	log.Debug("debug messages are enabled")
 
@@ -44,20 +45,28 @@ func run(cfg config.Config, log *slog.Logger) error {
 
 	updateClient, err := update.NewClient(cfg.UpdateAddress, log)
 	if err != nil {
-		return fmt.Errorf("cannot init words adapter: %v", err)
+		return fmt.Errorf("cannot init update adapter: %v", err)
 	}
 	defer closers.CloseOrLog(updateClient, log)
+
+	searchClient, err := search.NewClient(cfg.SearchAddress, log)
+	if err != nil {
+		return fmt.Errorf("cannot init search adapter: %v", err)
+	}
+	defer closers.CloseOrLog(searchClient, log)
 
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/db/update", rest.NewUpdateHandler(log, updateClient))
 	mux.Handle("GET /api/db/stats", rest.NewUpdateStatsHandler(log, updateClient))
 	mux.Handle("GET /api/db/status", rest.NewUpdateStatusHandler(log, updateClient))
 	mux.Handle("DELETE /api/db", rest.NewDropHandler(log, updateClient))
+	mux.Handle("GET /api/search", rest.NewSearchHandler(log, searchClient))
 	mux.Handle("GET /api/ping", rest.NewPingHandler(
 		log,
 		map[string]core.Pinger{
 			"words":  wordsClient,
 			"update": updateClient,
+			"search": searchClient,
 		}),
 	)
 
@@ -99,6 +108,6 @@ func mustMakeLogger(logLevel string) *slog.Logger {
 	default:
 		panic("unknown log level: " + logLevel)
 	}
-	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
+	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level, AddSource: true})
 	return slog.New(handler)
 }

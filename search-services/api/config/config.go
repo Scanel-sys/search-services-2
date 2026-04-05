@@ -2,7 +2,6 @@ package config
 
 import (
 	"log"
-	"log/slog"
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
@@ -18,18 +17,13 @@ type Config struct {
 	HTTPConfig    HTTPConfig `yaml:"api_server"`
 	WordsAddress  string     `yaml:"words_address" env:"WORDS_ADDRESS" env-default:"words:81"`
 	UpdateAddress string     `yaml:"update_address" env:"UPDATE_ADDRESS" env-default:"update:82"`
+	SearchAddress string     `yaml:"search_address" env:"SEARCH_ADDRESS" env-default:"search:83"`
 }
 
 func MustLoad(configPath string) Config {
 	var cfg Config
 	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
 		log.Fatalf("cannot read config %q: %s", configPath, err)
-
-		if err := cleanenv.ReadEnv(&cfg); err != nil {
-			slog.Error("error reading server env:", "error", err)
-			log.Fatalf("cannot read env : %s", err)
-		}
 	}
-
 	return cfg
 }

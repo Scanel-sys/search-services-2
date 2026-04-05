@@ -30,6 +30,10 @@ func New(log *slog.Logger, address string) (*DB, error) {
 	}, nil
 }
 
+func (db *DB) Close() error {
+	return db.conn.Close()
+}
+
 func (db *DB) Add(ctx context.Context, comics core.Comics) error {
 	_, err := db.conn.ExecContext(
 		ctx,

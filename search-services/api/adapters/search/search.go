@@ -1,4 +1,4 @@
-package words
+package search
 
 import (
 	"context"
@@ -10,12 +10,12 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"yadro.com/course/api/core"
-	wordspb "yadro.com/course/proto/words"
+	searchpb "yadro.com/course/proto/search"
 )
 
 type Client struct {
 	log    *slog.Logger
-	client wordspb.WordsClient
+	client searchpb.SearchClient
 	conn   *grpc.ClientConn
 }
 
@@ -25,7 +25,7 @@ func NewClient(address string, log *slog.Logger) (*Client, error) {
 		return nil, err
 	}
 	return &Client{
-		client: wordspb.NewWordsClient(conn),
+		client: searchpb.NewSearchClient(conn),
 		log:    log,
 		conn:   conn,
 	}, nil
@@ -35,15 +35,21 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
-func (c *Client) Norm(ctx context.Context, phrase string) ([]string, error) {
-	reply, err := c.client.Norm(ctx, &wordspb.WordsRequest{Phrase: phrase})
+func (c *Client) Search(ctx context.Context, phrase string, limit int) ([]core.Comics, error) {
+	reply, err := c.client.Search(ctx, &searchpb.SearchRequest{
+		Phrase: phrase, Limit: int64(limit),
+	})
 	if err != nil {
-		if status.Code(err) == codes.ResourceExhausted {
-			return nil, core.ErrBadArguments
+		if status.Code(err) == codes.NotFound {
+			return nil, core.ErrNotFound
 		}
 		return nil, err
 	}
-	return reply.GetWords(), nil
+	comics := make([]core.Comics, 0, len(reply.Comics))
+	for _, c := range reply.Comics {
+		comics = append(comics, core.Comics{ID: int(c.Id), URL: c.Url})
+	}
+	return comics, nil
 }
 
 func (c *Client) Ping(ctx context.Context) error {

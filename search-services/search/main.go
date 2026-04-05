@@ -12,13 +12,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"yadro.com/course/closers"
-	updatepb "yadro.com/course/proto/update"
-	"yadro.com/course/update/adapters/db"
-	updategrpc "yadro.com/course/update/adapters/grpc"
-	"yadro.com/course/update/adapters/words"
-	"yadro.com/course/update/adapters/xkcd"
-	"yadro.com/course/update/config"
-	"yadro.com/course/update/core"
+	searchpb "yadro.com/course/proto/search"
+	"yadro.com/course/search/adapters/db"
+	searchgrpc "yadro.com/course/search/adapters/grpc"
+	"yadro.com/course/search/adapters/words"
+	"yadro.com/course/search/config"
+	"yadro.com/course/search/core"
 )
 
 func main() {
@@ -34,7 +33,6 @@ func main() {
 
 	if err := run(cfg, log); err != nil {
 		log.Error("server failed", "error", err)
-		os.Exit(1)
 	}
 }
 
@@ -48,15 +46,6 @@ func run(cfg config.Config, log *slog.Logger) error {
 		return fmt.Errorf("failed to connect to db: %v", err)
 	}
 	defer closers.CloseOrLog(storage, log)
-	if err := storage.Migrate(); err != nil {
-		return fmt.Errorf("failed to migrate db: %v", err)
-	}
-
-	// xkcd adapter
-	xkcd, err := xkcd.NewClient(cfg.XKCD.URL, cfg.XKCD.Timeout, log)
-	if err != nil {
-		return fmt.Errorf("failed create XKCD client: %v", err)
-	}
 
 	// words adapter
 	words, err := words.NewClient(cfg.WordsAddress, log)
@@ -66,7 +55,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	defer closers.CloseOrLog(words, log)
 
 	// service
-	updater, err := core.NewService(log, storage, xkcd, words, cfg.XKCD.Concurrency)
+	searcher, err := core.NewService(log, storage, words)
 	if err != nil {
 		return fmt.Errorf("failed create Update service: %v", err)
 	}
@@ -78,7 +67,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 
 	s := grpc.NewServer()
-	updatepb.RegisterUpdateServer(s, updategrpc.NewServer(updater))
+	searchpb.RegisterSearchServer(s, searchgrpc.NewServer(searcher))
 	reflection.Register(s)
 
 	// context for Ctrl-C

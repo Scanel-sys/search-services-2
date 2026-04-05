@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"yadro.com/course/closers"
@@ -74,16 +75,20 @@ func (c Client) get(ctx context.Context, url string) (core.XKCDInfo, error) {
 		ID         int    `json:"num"`
 		URL        string `json:"img"`
 		Title      string `json:"title"`
+		SafeTitle  string `json:"safe_title"`
 		Transcript string `json:"transcript"`
+		Alt        string `json:"alt"`
 	}{}
 	if err = json.NewDecoder(resp.Body).Decode(&info); err != nil {
 		return core.XKCDInfo{}, fmt.Errorf("failed to decode comics: %v", err)
 	}
 
 	return core.XKCDInfo{
-		ID:          info.ID,
-		URL:         info.URL,
-		Title:       info.Title,
-		Description: info.Transcript,
+		ID:  info.ID,
+		URL: info.URL,
+		Description: strings.Join(
+			[]string{info.Title, info.SafeTitle, info.Transcript, info.Alt},
+			" ",
+		),
 	}, nil
 }

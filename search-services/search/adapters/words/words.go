@@ -9,13 +9,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	wordspb "yadro.com/course/proto/words"
-	"yadro.com/course/update/core"
+	"yadro.com/course/search/core"
 )
 
 type Client struct {
 	log    *slog.Logger
-	client wordspb.WordsClient
 	conn   *grpc.ClientConn
+	client wordspb.WordsClient
 }
 
 func NewClient(address string, log *slog.Logger) (*Client, error) {
@@ -25,8 +25,8 @@ func NewClient(address string, log *slog.Logger) (*Client, error) {
 	}
 	return &Client{
 		client: wordspb.NewWordsClient(conn),
-		log:    log,
 		conn:   conn,
+		log:    log,
 	}, nil
 }
 

@@ -15,22 +15,25 @@ import (
 )
 
 type Client struct {
+	log    *slog.Logger
 	client updatepb.UpdateClient
 	conn   *grpc.ClientConn
-	log    *slog.Logger
 }
 
 func NewClient(address string, log *slog.Logger) (*Client, error) {
 	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		slog.Error("failed to connect to update service", "error", err)
 		return nil, err
 	}
 	return &Client{
 		client: updatepb.NewUpdateClient(conn),
-		conn:   conn,
 		log:    log,
+		conn:   conn,
 	}, nil
+}
+
+func (c *Client) Close() error {
+	return c.conn.Close()
 }
 
 func (c *Client) Ping(ctx context.Context) error {
@@ -76,8 +79,4 @@ func (c *Client) Update(ctx context.Context) error {
 func (c *Client) Drop(ctx context.Context) error {
 	_, err := c.client.Drop(ctx, &emptypb.Empty{})
 	return err
-}
-
-func (c *Client) Close() error {
-	return c.conn.Close()
 }

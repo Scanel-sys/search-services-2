@@ -36,7 +36,7 @@ func NewService(
 
 func (s *Service) Update(ctx context.Context) (err error) {
 	if ok := s.lock.TryLock(); !ok {
-		s.log.Error("service already runs update or drop")
+		s.log.Error("service already runs update")
 		return ErrAlreadyExists
 	}
 	defer s.lock.Unlock()
@@ -64,14 +64,42 @@ func (s *Service) Update(ctx context.Context) (err error) {
 	// get last comics ID
 	lastID, err := s.xkcd.LastID(ctx)
 	if err != nil {
-		slog.Error("failed to get last ID in XKCD", "error", err)
+		slog.Error("failed to get last ID in XKCD", "erorr", err)
 		return fmt.Errorf("failed to get last ID in XKCD: %v", err)
 	}
 	s.log.Debug("last comics ID in XKCD", "id", lastID)
 
-	unknownIDs := generateIDs(ctx, 1, lastID, exists)
-	comics := s.getComics(ctx, unknownIDs)
-	return s.processComics(ctx, comics)
+	generator := generateIDs(ctx, 1, lastID, exists)
+	fetchers := s.getComics(ctx, generator)
+
+	var errorsFound bool
+	var added int
+	for info := range fetchers {
+		words, err := s.words.Norm(ctx, info.Description)
+		if err != nil {
+			errorsFound = true
+			s.log.Error("failed to normalize", "id", info.ID, "error", err)
+			continue
+		}
+		err = s.db.Add(ctx, Comics{
+			ID:    info.ID,
+			URL:   info.URL,
+			Words: words,
+		})
+		if err != nil {
+			errorsFound = true
+			s.log.Error("failed to save comics", "id", info.ID, "error", err)
+			continue
+		}
+		added++
+	}
+	s.log.Debug("added new comics", "count", added)
+
+	if errorsFound {
+		return fmt.Errorf("failed to process some comics")
+	}
+
+	return nil
 }
 
 func generateIDs(ctx context.Context, first, last int, exists map[int]bool) <-chan int {
@@ -93,77 +121,37 @@ func generateIDs(ctx context.Context, first, last int, exists map[int]bool) <-ch
 	return ch
 }
 
-type FetchInfo struct {
-	info XKCDInfo
-	err  error
-}
-
-func (s *Service) processComics(ctx context.Context, in <-chan FetchInfo) error {
-	var failed int
-	var added int
-	for comics := range in {
-		info, err := comics.info, comics.err
-		if err != nil {
-			failed++
-			s.log.Error("failed to get comics", "id", info.ID, "error", err)
-			continue
-		}
-		words, err := s.words.Norm(ctx, info.Description+" "+info.Title)
-		if err != nil {
-			failed++
-			s.log.Error("failed to normalize", "id", info.ID, "error", err)
-			continue
-		}
-		err = s.db.Add(ctx, Comics{
-			ID:    info.ID,
-			URL:   info.URL,
-			Words: words,
-		})
-		if err != nil {
-			failed++
-			s.log.Error("failed to save comics", "id", info.ID, "error", err)
-			continue
-		}
-		added++
-	}
-	s.log.Debug("comics", "added", added, "failed", failed)
-	if failed != 0 {
-		return fmt.Errorf("failed to fetch/store some comics: %d out of %d", failed, failed+added)
-	}
-	return nil
-}
-
-func (s *Service) getComics(ctx context.Context, in <-chan int) <-chan FetchInfo {
-	out := make(chan FetchInfo)
+func (s *Service) getComics(ctx context.Context, in <-chan int) <-chan XKCDInfo {
+	out := make(chan XKCDInfo)
 	var wg sync.WaitGroup
+	wg.Add(s.concurrency)
 
 	for i := range s.concurrency {
-		wg.Go(func() {
+		go func() {
 			s.log.Debug("fetcher up", "id", i)
 			defer s.log.Debug("fetcher down", "id", i)
+			defer wg.Done()
 			for id := range in {
 				if id == 404 {
 					// special case
-					out <- FetchInfo{
-						info: XKCDInfo{ID: id, Title: "404", Description: "Not found"},
-					}
+					out <- XKCDInfo{ID: id, Description: "404 Not found"}
 					continue
 				}
 				info, err := s.xkcd.Get(ctx, id)
-				s.log.Debug("fetched", "id", id)
 				if err != nil {
-					info = XKCDInfo{ID: id}
+					s.log.Error("failed to get comics", "id", id, "error", err)
+					continue
 				}
-				out <- FetchInfo{info: info, err: err}
+				s.log.Debug("fetched", "id", id)
+				out <- info
 			}
-		})
+		}()
 	}
 
 	go func() {
 		wg.Wait()
 		close(out)
 	}()
-
 	return out
 }
 
@@ -192,11 +180,6 @@ func (s *Service) Status(ctx context.Context) ServiceStatus {
 }
 
 func (s *Service) Drop(ctx context.Context) error {
-	if ok := s.lock.TryLock(); !ok {
-		s.log.Error("service already runs update or drop")
-		return ErrAlreadyExists
-	}
-	defer s.lock.Unlock()
 	err := s.db.Drop(ctx)
 	if err != nil {
 		s.log.Error("failed to drop db entries", "error", err)
