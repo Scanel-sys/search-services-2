@@ -20,56 +20,33 @@ type Client struct {
 }
 
 func NewClient(address string, log *slog.Logger) (*Client, error) {
-
-	log.Info("server config",
-		"address", address,
-	)
-
-	conn, err := grpc.NewClient(
-		address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		slog.Error("failed to connect to words service", "error", err)
 		return nil, err
 	}
-
-	client := wordspb.NewWordsClient(conn)
-
 	return &Client{
+		client: wordspb.NewWordsClient(conn),
 		log:    log,
-		client: client,
 		conn:   conn,
 	}, nil
 }
 
-func (c Client) Close() error {
-	if err := c.conn.Close(); err != nil {
-		return err
-	}
-
-	return nil
+func (c *Client) Close() error {
+	return c.conn.Close()
 }
 
-func (c Client) Norm(ctx context.Context, phrase string) ([]string, error) {
-	request := &wordspb.WordsRequest{Phrase: phrase}
-	reply, err := c.client.Norm(ctx, request)
-
+func (c *Client) Norm(ctx context.Context, phrase string) ([]string, error) {
+	reply, err := c.client.Norm(ctx, &wordspb.WordsRequest{Phrase: phrase})
 	if err != nil {
 		if status.Code(err) == codes.ResourceExhausted {
-			slog.Error("too long message received", "error", err)
-			return nil, core.ErrTooLongMessage
+			return nil, core.ErrBadArguments
 		}
-
-		slog.Error("error calling Norm function", "error", err)
 		return nil, err
 	}
-
-	return reply.Words, nil
+	return reply.GetWords(), nil
 }
 
-func (c Client) Ping(ctx context.Context) error {
+func (c *Client) Ping(ctx context.Context) error {
 	_, err := c.client.Ping(ctx, &emptypb.Empty{})
 	return err
 }

@@ -20,8 +20,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Words_Ping_FullMethodName = "/search.Words/Ping"
-	Words_Norm_FullMethodName = "/search.Words/Norm"
+	Words_Ping_FullMethodName = "/words.Words/Ping"
+	Words_Norm_FullMethodName = "/words.Words/Norm"
 )
 
 // WordsClient is the client API for Words service.
@@ -149,7 +149,7 @@ func _Words_Norm_Handler(srv interface{}, ctx context.Context, dec func(interfac
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Words_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "search.Words",
+	ServiceName: "words.Words",
 	HandlerType: (*WordsServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

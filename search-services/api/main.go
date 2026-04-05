@@ -11,9 +11,12 @@ import (
 	"os/signal"
 
 	"yadro.com/course/api/adapters/rest"
+	"yadro.com/course/api/adapters/search"
+	"yadro.com/course/api/adapters/update"
 	"yadro.com/course/api/adapters/words"
 	"yadro.com/course/api/config"
 	"yadro.com/course/api/core"
+	"yadro.com/course/closers"
 )
 
 func main() {
@@ -22,26 +25,54 @@ func main() {
 	flag.Parse()
 
 	cfg := config.MustLoad(configPath)
-	fmt.Println(cfg)
 
 	log := mustMakeLogger(cfg.LogLevel)
-
-	log.Info("starting server")
-	log.Debug("debug messages are enabled")
-	slog.Info("words address :", "address", cfg.WordsAddress)
-	wordsClient, err := words.NewClient(cfg.WordsAddress, log)
-	if err != nil {
-		log.Error("cannot init words adapter", "error", err)
+	if err := run(cfg, log); err != nil {
+		slog.Error("run failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+func run(cfg config.Config, log *slog.Logger) error {
+	log.Info("starting server")
+	log.Debug("debug messages are enabled")
+
+	wordsClient, err := words.NewClient(cfg.WordsAddress, log)
+	if err != nil {
+		return fmt.Errorf("cannot init words adapter: %v", err)
+	}
+	defer closers.CloseOrLog(wordsClient, log)
+
+	updateClient, err := update.NewClient(cfg.UpdateAddress, log)
+	if err != nil {
+		return fmt.Errorf("cannot init update adapter: %v", err)
+	}
+	defer closers.CloseOrLog(updateClient, log)
+
+	searchClient, err := search.NewClient(cfg.SearchAddress, log)
+	if err != nil {
+		return fmt.Errorf("cannot init search adapter: %v", err)
+	}
+	defer closers.CloseOrLog(searchClient, log)
 
 	mux := http.NewServeMux()
-	mux.Handle("GET /ping", rest.NewPingHandler(log, map[string]core.Pinger{"words": wordsClient}))
-	mux.Handle("GET /api/words", rest.NewNormHandler(log, wordsClient))
+	mux.Handle("POST /api/db/update", rest.NewUpdateHandler(log, updateClient))
+	mux.Handle("GET /api/db/stats", rest.NewUpdateStatsHandler(log, updateClient))
+	mux.Handle("GET /api/db/status", rest.NewUpdateStatusHandler(log, updateClient))
+	mux.Handle("DELETE /api/db", rest.NewDropHandler(log, updateClient))
+	mux.Handle("GET /api/search", rest.NewSearchHandler(log, searchClient))
+	mux.Handle("GET /api/ping", rest.NewPingHandler(
+		log,
+		map[string]core.Pinger{
+			"words":  wordsClient,
+			"update": updateClient,
+			"search": searchClient,
+		}),
+	)
 
 	server := http.Server{
-		Addr:        cfg.HttpServer.Address,
-		ReadTimeout: cfg.HttpServer.Timeout,
+		Addr:        cfg.HTTPConfig.Address,
+		ReadTimeout: cfg.HTTPConfig.Timeout,
 		Handler:     mux,
 	}
 
@@ -56,14 +87,27 @@ func main() {
 		}
 	}()
 
+	log.Info("Running HTTP server", "address", cfg.HTTPConfig.Address)
 	if err := server.ListenAndServe(); err != nil {
 		if !errors.Is(err, http.ErrServerClosed) {
-			log.Error("server closed unexpectedly", "error", err)
-			return
+			return fmt.Errorf("server closed unexpectedly: %v", err)
 		}
 	}
+	return nil
 }
 
 func mustMakeLogger(logLevel string) *slog.Logger {
-	return slog.Default()
+	var level slog.Level
+	switch logLevel {
+	case "DEBUG":
+		level = slog.LevelDebug
+	case "INFO":
+		level = slog.LevelInfo
+	case "ERROR":
+		level = slog.LevelError
+	default:
+		panic("unknown log level: " + logLevel)
+	}
+	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level, AddSource: true})
+	return slog.New(handler)
 }

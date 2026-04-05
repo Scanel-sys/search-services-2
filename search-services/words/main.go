@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"log/slog"
 	"net"
@@ -21,10 +20,10 @@ import (
 	"yadro.com/course/words/words"
 )
 
-const maxPhraseLen = 4096
+const maxPhraseLen = 20000
 
 type ServerConfig struct {
-	Port string `yaml:"port" env:"WORDS_GRPC_PORT" env-default:"8080"`
+	Port string `yaml:"words_address" env:"WORDS_ADDRESS" env-default:"80"`
 }
 
 type Server struct {
@@ -46,43 +45,38 @@ func (s *Server) Norm(ctx context.Context, in *wordspb.WordsRequest) (*wordspb.W
 	return &wordspb.WordsReply{Words: stemmedWords}, nil
 }
 
-func parseServerConfig(configPath string, addrFlag string) (string, string, error) {
+func parseServerConfig(configPath string) (string, error) {
 	var cfg ServerConfig
 
 	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
-		return "", "", err
+		slog.Error("error reading server config:", "error", err)
+	} else {
+		return cfg.Port, nil
 	}
 
 	if err := cleanenv.ReadEnv(&cfg); err != nil {
-		return "", "", err
+		slog.Error("error reading server env:", "error", err)
+		return "", err
 	}
 
-	port := cfg.Port
-
-	if addrFlag == "" {
-		addrFlag = fmt.Sprintf(":%s", port)
-	}
-
-	return addrFlag, port, nil
+	return cfg.Port, nil
 }
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "config path")
-	addrFlag := flag.String("address", "", "server address")
 
 	flag.Parse()
 
-	address, port, err := parseServerConfig(*configPath, *addrFlag)
+	port, err := parseServerConfig(*configPath)
 
 	if err != nil {
 		log.Fatalf("Error parsing server config: %v", err)
 	}
 	slog.Info("server config",
-		"address", address,
-		"port", port,
+		"address", port,
 	)
 
-	listener, err := net.Listen("tcp", address)
+	listener, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}

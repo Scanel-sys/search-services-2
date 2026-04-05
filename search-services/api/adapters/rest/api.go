@@ -1,92 +1,173 @@
 package rest
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
-	"time"
+	"strconv"
 
 	"yadro.com/course/api/core"
 )
 
-type pingResponse struct {
-	Replies map[string]string `json:"replies"`
+func encodeReply(w io.Writer, reply any) error {
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(reply); err != nil {
+		return fmt.Errorf("could not encode comics: %v", err)
+	}
+	return nil
 }
 
-type normResponse struct {
-	Words []string `json:"words"`
-	Total int      `json:"total"`
+type PingResponse struct {
+	Replies map[string]string `json:"replies"`
 }
 
 func NewPingHandler(log *slog.Logger, pingers map[string]core.Pinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-
-		replies := make(map[string]string, len(pingers))
-
+		reply := PingResponse{
+			Replies: make(map[string]string),
+		}
 		for name, pinger := range pingers {
-			if err := pinger.Ping(ctx); err != nil {
-				log.Error("service unavailable", "service", name, "error", err)
-				replies[name] = "unavailable"
+			if err := pinger.Ping(r.Context()); err != nil {
+				reply.Replies[name] = "unavailable"
+				log.Error("one of services is not available", "service", name, "error", err)
 				continue
 			}
-
-			replies[name] = "ok"
+			reply.Replies[name] = "ok"
 		}
-
-		resp := pingResponse{
-			Replies: replies,
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			log.Error("cannot encode response", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
+		if err := encodeReply(w, reply); err != nil {
+			log.Error("cannot encode reply", "error", err)
 		}
 	}
 }
 
-func NewNormHandler(log *slog.Logger, normalizer core.Normalizer) http.HandlerFunc {
+func NewUpdateHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-
-		phrase := r.URL.Query().Get("phrase")
-		if phrase == "" {
-			http.Error(w, "phrase is required", http.StatusBadRequest)
-			return
-		}
-
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-
-		out, err := normalizer.Norm(ctx, phrase)
-		if err != nil {
-
-			if errors.Is(err, core.ErrTooLongMessage) {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+		if err := updater.Update(r.Context()); err != nil {
+			log.Error("error while update", "error", err)
+			if errors.Is(err, core.ErrAlreadyExists) {
+				http.Error(w, err.Error(), http.StatusAccepted)
 				return
 			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
 
-			log.Error("normalization failed", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+type UpdateStats struct {
+	WordsTotal    int `json:"words_total"`
+	WordsUnique   int `json:"words_unique"`
+	ComicsFetched int `json:"comics_fetched"`
+	ComicsTotal   int `json:"comics_total"`
+}
+
+func NewUpdateStatsHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		stats, err := updater.Stats(r.Context())
+		if err != nil {
+			log.Error("error while stats", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		reply := UpdateStats{
+			WordsTotal:    stats.WordsTotal,
+			WordsUnique:   stats.WordsUnique,
+			ComicsFetched: stats.ComicsFetched,
+			ComicsTotal:   stats.ComicsTotal,
+		}
+		if err := encodeReply(w, reply); err != nil {
+			log.Error("cannot encode reply", "error", err)
+		}
+	}
+}
+
+type UpdateStatus struct {
+	Status string `json:"status"`
+}
+
+func NewUpdateStatusHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		status, err := updater.Status(r.Context())
+		if err != nil {
+			log.Error("error while status", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		reply := UpdateStatus{Status: string(status)}
+		if err := encodeReply(w, reply); err != nil {
+			log.Error("cannot encode reply", "error", err)
+		}
+	}
+}
+
+func NewDropHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := updater.Drop(r.Context()); err != nil {
+			log.Error("error while drop", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
+
+type Comics struct {
+	ID  int    `json:"id"`
+	URL string `json:"url"`
+}
+
+type ComicsReply struct {
+	Comics []Comics `json:"comics"`
+	Total  int      `json:"total"`
+}
+
+func NewSearchHandler(log *slog.Logger, searcher core.Searcher) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var limit int
+		var err error
+		limitStr := r.URL.Query().Get("limit")
+		if limitStr != "" {
+			limit, err = strconv.Atoi(limitStr)
+			if err != nil {
+				log.Error("wrong limit", "value", limitStr)
+				http.Error(w, "bad limit", http.StatusBadRequest)
+				return
+			}
+			if limit < 0 {
+				log.Error("wrong limit", "value", limit)
+				http.Error(w, "bad limit", http.StatusBadRequest)
+				return
+			}
+		}
+		phrase := r.URL.Query().Get("phrase")
+		if phrase == "" {
+			log.Error("no phrase")
+			http.Error(w, "no phrase", http.StatusBadRequest)
 			return
 		}
 
-		resp := normResponse{
-			Words: out,
-			Total: len(out),
+		comics, err := searcher.Search(r.Context(), phrase, limit)
+		if err != nil {
+			if errors.Is(err, core.ErrNotFound) {
+				http.Error(w, "no comics found", http.StatusNotFound)
+				return
+			}
+			log.Error("error while seaching", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		reply := ComicsReply{
+			Comics: make([]Comics, 0, len(comics)),
+			Total:  len(comics),
+		}
+		for _, c := range comics {
+			reply.Comics = append(reply.Comics, Comics{ID: c.ID, URL: c.URL})
+		}
 
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			log.Error("cannot encode response", "error", err)
-			return
+		if err := encodeReply(w, reply); err != nil {
+			log.Error("cannot encode reply", "error", err)
 		}
 	}
 }
