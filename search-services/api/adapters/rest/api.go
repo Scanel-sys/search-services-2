@@ -1,12 +1,10 @@
 package rest
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"yadro.com/course/api/core"
 )
@@ -15,45 +13,24 @@ type pingResponse struct {
 	Replies map[string]string `json:"replies"`
 }
 
-type updateResponse struct {
-	WordsTotal    int `json:"words_total"`
-	WordsUnique   int `json:"words_unique"`
-	ComicsFetched int `json:"comics_fetched"`
-	ComicsTotal   int `json:"comics_total"`
-}
-
-type statusResponse struct {
-	Status core.UpdateStatus `json:"status"`
-}
-
 func NewPingHandler(log *slog.Logger, pingers map[string]core.Pinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-
 		replies := make(map[string]string, len(pingers))
-
 		for name, pinger := range pingers {
-			if err := pinger.Ping(ctx); err != nil {
-				log.Error("service unavailable", "service", name, "error", err)
+			if err := pinger.Ping(r.Context()); err != nil {
 				replies[name] = "unavailable"
+				log.Error("one of services is not available", "service", name, "error", err)
 				continue
 			}
-
 			replies[name] = "ok"
 		}
 
-		resp := pingResponse{
+		response := pingResponse{
 			Replies: replies,
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			log.Error("cannot encode response", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Error("cannot encode reply", "error", err)
 		}
 	}
 }
@@ -71,50 +48,48 @@ func NewUpdateHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
 	}
 }
 
+type statsResponse struct {
+	WordsTotal    int `json:"words_total"`
+	WordsUnique   int `json:"words_unique"`
+	ComicsFetched int `json:"comics_fetched"`
+	ComicsTotal   int `json:"comics_total"`
+}
+
 func NewUpdateStatsHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer cancel()
-
-		stats, err := updater.Stats(ctx)
+		stats, err := updater.Stats(r.Context())
 		if err != nil {
-			log.Error("cannot get stats", "error", err)
+			log.Error("error while stats", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		resp := updateResponse{
+		reply := statsResponse{
 			WordsTotal:    stats.WordsTotal,
 			WordsUnique:   stats.WordsUnique,
 			ComicsFetched: stats.ComicsFetched,
 			ComicsTotal:   stats.ComicsTotal,
 		}
-
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			log.Error("cannot encode stats", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+		if err = json.NewEncoder(w).Encode(reply); err != nil {
+			log.Error("encoding failed", "error", err)
 		}
 	}
 }
 
+type statusResponse struct {
+	Status string `json:"status"`
+}
+
 func NewUpdateStatusHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-
 		status, err := updater.Status(r.Context())
 		if err != nil {
-			log.Error("cannot get status", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			log.Error("error while status", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		log.Info("get status:", "status", status)
-
-		reply := statusResponse{
-			Status: status,
-		}
-		if err := json.NewEncoder(w).Encode(reply); err != nil {
-			log.Error("cannot encode status", "error", err)
+		reply := statusResponse{Status: string(status)}
+		if err = json.NewEncoder(w).Encode(reply); err != nil {
+			log.Error("encoding failed", "error", err)
 		}
 	}
 }
@@ -122,9 +97,8 @@ func NewUpdateStatusHandler(log *slog.Logger, updater core.Updater) http.Handler
 func NewDropHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := updater.Drop(r.Context()); err != nil {
-			log.Error("drop failed", "error", err)
-			http.Error(w, "drop failed", http.StatusInternalServerError)
-			return
+			log.Error("error while drop", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	}
 }

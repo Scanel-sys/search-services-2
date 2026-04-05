@@ -22,60 +22,67 @@ import (
 
 const maxPhraseLen = 20000
 
-type server struct {
+type ServerConfig struct {
+	Port string `yaml:"words_address" env:"WORDS_ADDRESS" env-default:"80"`
+}
+
+type Server struct {
 	wordspb.UnimplementedWordsServer
 }
 
-func (s *server) Ping(_ context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
+func (s *Server) Ping(_ context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
-func (s *server) Norm(ctx context.Context, in *wordspb.WordsRequest) (*wordspb.WordsReply, error) {
+func (s *Server) Norm(ctx context.Context, in *wordspb.WordsRequest) (*wordspb.WordsReply, error) {
 
 	if len(in.Phrase) > maxPhraseLen {
 		return nil, status.Error(codes.ResourceExhausted, "phrase too large")
 	}
 
-	return &wordspb.WordsReply{Words: words.Norm(in.Phrase)}, nil
+	stemmedWords := words.Norm(in.Phrase)
+
+	return &wordspb.WordsReply{Words: stemmedWords}, nil
 }
 
-type Config struct {
-	Address string `yaml:"words_address" env:"WORDS_ADDRESS" env-default:"80"`
-}
-
-func parseConfig(configPath string) (Config, error) {
-	var cfg Config
+func parseServerConfig(configPath string) (string, error) {
+	var cfg ServerConfig
 
 	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
 		slog.Error("error reading server config:", "error", err)
+	} else {
+		return cfg.Port, nil
 	}
 
 	if err := cleanenv.ReadEnv(&cfg); err != nil {
 		slog.Error("error reading server env:", "error", err)
-		return Config{}, err
+		return "", err
 	}
 
-	return cfg, nil
+	return cfg.Port, nil
 }
 
 func main() {
-	var configPath string
-	flag.StringVar(&configPath, "config", "config.yaml", "server configuration file")
+	configPath := flag.String("config", "config.yaml", "config path")
+
 	flag.Parse()
 
-	cfg, err := parseConfig(configPath)
+	port, err := parseServerConfig(*configPath)
 
 	if err != nil {
-		log.Fatalf("error parsing config: %v", err)
+		log.Fatalf("Error parsing server config: %v", err)
 	}
+	slog.Info("server config",
+		"address", port,
+	)
 
-	listener, err := net.Listen("tcp", cfg.Address)
+	listener, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
 	s := grpc.NewServer()
-	wordspb.RegisterWordsServer(s, &server{})
+	wordspb.RegisterWordsServer(s, &Server{})
 	reflection.Register(s)
 
 	go func() {

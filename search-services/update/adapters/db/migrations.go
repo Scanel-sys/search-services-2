@@ -2,6 +2,8 @@ package db
 
 import (
 	"embed"
+	"fmt"
+	"log/slog"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/pgx"
@@ -10,6 +12,18 @@ import (
 
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
+
+type Logger struct {
+	logger *slog.Logger
+}
+
+func (l Logger) Verbose() bool {
+	return true
+}
+
+func (l Logger) Printf(format string, v ...any) {
+	l.logger.Debug("migrate", "msg", fmt.Sprintf(format, v...))
+}
 
 func (db *DB) Migrate() error {
 	db.log.Debug("running migration")
@@ -21,10 +35,11 @@ func (db *DB) Migrate() error {
 	if err != nil {
 		return err
 	}
-	m, err := migrate.NewWithInstance("iofs", files, "pgx", driver)
+	m, err := migrate.NewWithInstance("myiofs", files, "mypg", driver)
 	if err != nil {
 		return err
 	}
+	m.Log = Logger{logger: db.log}
 
 	err = m.Up()
 

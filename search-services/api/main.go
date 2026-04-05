@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -21,25 +22,29 @@ func main() {
 	var configPath string
 	flag.StringVar(&configPath, "config", "config.yaml", "server configuration file")
 	flag.Parse()
-
 	cfg := config.MustLoad(configPath)
 
 	log := mustMakeLogger(cfg.LogLevel)
+	if err := run(cfg, log); err != nil {
+		slog.Error("run failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(cfg config.Config, log *slog.Logger) error {
 
 	log.Info("starting server")
 	log.Debug("debug messages are enabled")
 
 	wordsClient, err := words.NewClient(cfg.WordsAddress, log)
 	if err != nil {
-		log.Error("cannot init words adapter", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("cannot init words adapter: %v", err)
 	}
 	defer closers.CloseOrLog(wordsClient, log)
 
 	updateClient, err := update.NewClient(cfg.UpdateAddress, log)
 	if err != nil {
-		log.Error("cannot init words adapter", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("cannot init words adapter: %v", err)
 	}
 	defer closers.CloseOrLog(updateClient, log)
 
@@ -48,7 +53,13 @@ func main() {
 	mux.Handle("GET /api/db/stats", rest.NewUpdateStatsHandler(log, updateClient))
 	mux.Handle("GET /api/db/status", rest.NewUpdateStatusHandler(log, updateClient))
 	mux.Handle("DELETE /api/db", rest.NewDropHandler(log, updateClient))
-	mux.Handle("GET /api/ping", rest.NewPingHandler(log, map[string]core.Pinger{"words": wordsClient, "update": updateClient}))
+	mux.Handle("GET /api/ping", rest.NewPingHandler(
+		log,
+		map[string]core.Pinger{
+			"words":  wordsClient,
+			"update": updateClient,
+		}),
+	)
 
 	server := http.Server{
 		Addr:        cfg.HTTPConfig.Address,
@@ -70,10 +81,10 @@ func main() {
 	log.Info("Running HTTP server", "address", cfg.HTTPConfig.Address)
 	if err := server.ListenAndServe(); err != nil {
 		if !errors.Is(err, http.ErrServerClosed) {
-			log.Error("server closed unexpectedly", "error", err)
-			return
+			return fmt.Errorf("server closed unexpectedly: %v", err)
 		}
 	}
+	return nil
 }
 
 func mustMakeLogger(logLevel string) *slog.Logger {

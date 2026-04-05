@@ -31,6 +31,5 @@ func MustLoad(configPath string) Config {
 			log.Fatalf("cannot read config %q: %s", configPath, err)
 		}
 	}
-
 	return cfg
 }

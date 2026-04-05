@@ -15,86 +15,69 @@ import (
 )
 
 type Client struct {
-	log    *slog.Logger
 	client updatepb.UpdateClient
 	conn   *grpc.ClientConn
+	log    *slog.Logger
 }
 
 func NewClient(address string, log *slog.Logger) (*Client, error) {
-
-	log.Info("server config",
-		"address", address,
-	)
-
-	conn, err := grpc.NewClient(
-		address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		slog.Error("failed to connect to update service", "error", err)
 		return nil, err
 	}
-
 	return &Client{
-		log:    log,
 		client: updatepb.NewUpdateClient(conn),
 		conn:   conn,
+		log:    log,
 	}, nil
 }
 
-func (c Client) Close() error {
-	return c.conn.Close()
-}
-
-func (c Client) Ping(ctx context.Context) error {
+func (c *Client) Ping(ctx context.Context) error {
 	_, err := c.client.Ping(ctx, &emptypb.Empty{})
 	return err
 }
 
-func (c Client) Status(ctx context.Context) (core.UpdateStatus, error) {
+func (c *Client) Status(ctx context.Context) (core.UpdateStatus, error) {
 	reply, err := c.client.Status(ctx, &emptypb.Empty{})
 	if err != nil {
 		return core.StatusUpdateUnknown, err
 	}
-
 	switch reply.Status {
 	case updatepb.Status_STATUS_IDLE:
 		return core.StatusUpdateIdle, nil
 	case updatepb.Status_STATUS_RUNNING:
 		return core.StatusUpdateRunning, nil
-	default:
-		return core.StatusUpdateUnknown, errors.New("unknown status")
 	}
+	return core.StatusUpdateUnknown, errors.New("unknown status")
 }
 
-func (c Client) Stats(ctx context.Context) (core.UpdateStats, error) {
-	stats, err := c.client.Stats(ctx, &emptypb.Empty{})
-
+func (c *Client) Stats(ctx context.Context) (core.UpdateStats, error) {
+	reply, err := c.client.Stats(ctx, &emptypb.Empty{})
 	if err != nil {
 		return core.UpdateStats{}, err
 	}
-
 	return core.UpdateStats{
-		WordsTotal:    int(stats.WordsTotal),
-		WordsUnique:   int(stats.WordsUnique),
-		ComicsFetched: int(stats.ComicsFetched),
-		ComicsTotal:   int(stats.ComicsTotal),
+		WordsTotal:    int(reply.GetWordsTotal()),
+		WordsUnique:   int(reply.GetWordsUnique()),
+		ComicsFetched: int(reply.GetComicsFetched()),
+		ComicsTotal:   int(reply.GetComicsTotal()),
 	}, nil
 }
 
-func (c Client) Update(ctx context.Context) error {
+func (c *Client) Update(ctx context.Context) error {
 	_, err := c.client.Update(ctx, &emptypb.Empty{})
 	if status.Code(err) == codes.AlreadyExists {
 		return core.ErrAlreadyExists
 	}
-	return nil
+	return err
 }
 
-func (c Client) Drop(ctx context.Context) error {
+func (c *Client) Drop(ctx context.Context) error {
 	_, err := c.client.Drop(ctx, &emptypb.Empty{})
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
+}
+
+func (c *Client) Close() error {
+	return c.conn.Close()
 }

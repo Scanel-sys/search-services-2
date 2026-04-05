@@ -15,9 +15,8 @@ type Service struct {
 	xkcd        XKCD
 	words       Words
 	concurrency int
-
-	inProgress atomic.Bool
-	lock       sync.Mutex
+	inProgress  atomic.Bool
+	lock        sync.Mutex
 }
 
 func NewService(
@@ -33,25 +32,6 @@ func NewService(
 		words:       words,
 		concurrency: concurrency,
 	}, nil
-}
-
-func generateIDs(ctx context.Context, first, last int, exists map[int]bool) <-chan int {
-	ch := make(chan int)
-	go func() {
-		defer close(ch)
-		for i := first; i <= last; i++ {
-			if exists[i] {
-				continue
-			}
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				ch <- i
-			}
-		}
-	}()
-	return ch
 }
 
 func (s *Service) Update(ctx context.Context) (err error) {
@@ -92,6 +72,25 @@ func (s *Service) Update(ctx context.Context) (err error) {
 	unknownIDs := generateIDs(ctx, 1, lastID, exists)
 	comics := s.getComics(ctx, unknownIDs)
 	return s.processComics(ctx, comics)
+}
+
+func generateIDs(ctx context.Context, first, last int, exists map[int]bool) <-chan int {
+	ch := make(chan int)
+	go func() {
+		defer close(ch)
+		for i := first; i <= last; i++ {
+			if exists[i] {
+				continue
+			}
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				ch <- i
+			}
+		}
+	}()
+	return ch
 }
 
 type FetchInfo struct {
@@ -171,17 +170,18 @@ func (s *Service) getComics(ctx context.Context, in <-chan int) <-chan FetchInfo
 func (s *Service) Stats(ctx context.Context) (ServiceStats, error) {
 	dbStats, err := s.db.Stats(ctx)
 	if err != nil {
-		s.log.Error("Error getting DB stats", "error", err)
+		s.log.Error("failed to get stats", "error", err)
 		return ServiceStats{}, err
 	}
-
-	comicsTotal, err := s.xkcd.LastID(ctx)
+	lastID, err := s.xkcd.LastID(ctx)
 	if err != nil {
-		s.log.Error("Error getting comics total", "error", err)
+		s.log.Error("failed to get last comics ID", "error", err)
 		return ServiceStats{}, err
 	}
-
-	return ServiceStats{DBStats: dbStats, ComicsTotal: comicsTotal}, nil
+	return ServiceStats{
+		DBStats:     dbStats,
+		ComicsTotal: lastID,
+	}, nil
 }
 
 func (s *Service) Status(ctx context.Context) ServiceStatus {

@@ -22,7 +22,6 @@ import (
 )
 
 func main() {
-
 	// config
 	var configPath string
 	flag.StringVar(&configPath, "config", "config.yaml", "server configuration file")

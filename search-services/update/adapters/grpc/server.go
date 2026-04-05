@@ -49,24 +49,19 @@ func (s *Server) Update(ctx context.Context, _ *emptypb.Empty) (*emptypb.Empty, 
 func (s *Server) Stats(ctx context.Context, _ *emptypb.Empty) (*updatepb.StatsReply, error) {
 	stats, err := s.service.Stats(ctx)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, err
 	}
-
-	reply := updatepb.StatsReply{
+	return &updatepb.StatsReply{
 		WordsTotal:    int64(stats.WordsTotal),
 		WordsUnique:   int64(stats.WordsUnique),
 		ComicsTotal:   int64(stats.ComicsTotal),
 		ComicsFetched: int64(stats.ComicsFetched),
-	}
-
-	return &reply, nil
+	}, nil
 }
 
 func (s *Server) Drop(ctx context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
-
 	if err := s.service.Drop(ctx); err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, err
 	}
-
 	return &emptypb.Empty{}, nil
 }

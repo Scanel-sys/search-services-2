@@ -23,12 +23,12 @@ type Config struct {
 func MustLoad(configPath string) Config {
 	var cfg Config
 	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
-		slog.Error("error reading server config file:", "error", err)
-	}
+		log.Fatalf("cannot read config %q: %s", configPath, err)
 
-	if err := cleanenv.ReadEnv(&cfg); err != nil {
-		slog.Error("error reading server env:", "error", err)
-		log.Fatalf("cannot read env : %s", err)
+		if err := cleanenv.ReadEnv(&cfg); err != nil {
+			slog.Error("error reading server env:", "error", err)
+			log.Fatalf("cannot read env : %s", err)
+		}
 	}
 
 	return cfg
