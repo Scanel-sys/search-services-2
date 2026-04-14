@@ -42,8 +42,33 @@ func (s *Server) Search(
 	comics := make([]*searchpb.Comics, 0, len(results))
 	for _, c := range results {
 		comics = append(comics, &searchpb.Comics{
-			Id:  int64(c.ID),
-			Url: c.URL,
+			Id:    int64(c.ID),
+			Url:   c.URL,
+			Score: int64(c.Score),
+		})
+	}
+	return &searchpb.SearchReply{Comics: comics}, nil
+}
+
+func (s *Server) SearchIndex(
+	ctx context.Context, req *searchpb.SearchRequest,
+) (*searchpb.SearchReply, error) {
+	if req.Limit == 0 {
+		req.Limit = defaultLimit
+	}
+	results, err := s.service.SearchIndex(ctx, req.Phrase, int(req.Limit))
+	if err != nil {
+		if errors.Is(err, core.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "nothing found")
+		}
+		return nil, err
+	}
+	comics := make([]*searchpb.Comics, 0, len(results))
+	for _, c := range results {
+		comics = append(comics, &searchpb.Comics{
+			Id:    int64(c.ID),
+			Url:   c.URL,
+			Score: int64(c.Score),
 		})
 	}
 	return &searchpb.SearchReply{Comics: comics}, nil

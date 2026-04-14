@@ -16,6 +16,7 @@ type UpdateStats struct {
 }
 
 type Comics struct {
-	ID  int
-	URL string
+	ID    int
+	URL   string
+	Score int
 }

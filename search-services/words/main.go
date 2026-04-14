@@ -2,13 +2,10 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"log"
-	"log/slog"
 	"net"
-	"os/signal"
-	"syscall"
+	"strconv"
 
 	"github.com/ilyakaznacheev/cleanenv"
 	"google.golang.org/grpc"
@@ -22,84 +19,50 @@ import (
 
 const maxPhraseLen = 20000
 
-type ServerConfig struct {
-	Port string `yaml:"words_address" env:"WORDS_ADDRESS" env-default:"80"`
-}
-
-type Server struct {
+type server struct {
 	wordspb.UnimplementedWordsServer
 }
 
-func (s *Server) Ping(_ context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
+func (s *server) Ping(_ context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
-func (s *Server) Norm(ctx context.Context, in *wordspb.WordsRequest) (*wordspb.WordsReply, error) {
-
-	if len(in.Phrase) > maxPhraseLen {
-		return nil, status.Error(codes.ResourceExhausted, "phrase too large")
+func (s *server) Norm(_ context.Context, in *wordspb.WordsRequest) (*wordspb.WordsReply, error) {
+	if len(in.GetPhrase()) > maxPhraseLen {
+		return nil, status.Error(
+			codes.ResourceExhausted,
+			"phrase is large than "+strconv.Itoa(maxPhraseLen),
+		)
 	}
-
-	stemmedWords := words.Norm(in.Phrase)
-
-	return &wordspb.WordsReply{Words: stemmedWords}, nil
+	return &wordspb.WordsReply{
+		Words: words.Norm(in.GetPhrase()),
+	}, nil
 }
 
-func parseServerConfig(configPath string) (string, error) {
-	var cfg ServerConfig
-
-	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
-		slog.Error("error reading server config:", "error", err)
-	} else {
-		return cfg.Port, nil
-	}
-
-	if err := cleanenv.ReadEnv(&cfg); err != nil {
-		slog.Error("error reading server env:", "error", err)
-		return "", err
-	}
-
-	return cfg.Port, nil
+type Config struct {
+	Address string `yaml:"words_address" env:"WORDS_ADDRESS" env-default:"80"`
 }
 
 func main() {
-	configPath := flag.String("config", "config.yaml", "config path")
-
+	var configPath string
+	flag.StringVar(&configPath, "config", "config.yaml", "server configuration file")
 	flag.Parse()
 
-	port, err := parseServerConfig(*configPath)
-
-	if err != nil {
-		log.Fatalf("Error parsing server config: %v", err)
+	var cfg Config
+	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
+		panic(err)
 	}
-	slog.Info("server config",
-		"address", port,
-	)
 
-	listener, err := net.Listen("tcp", port)
+	listener, err := net.Listen("tcp", cfg.Address)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
 	s := grpc.NewServer()
-	wordspb.RegisterWordsServer(s, &Server{})
+	wordspb.RegisterWordsServer(s, &server{})
 	reflection.Register(s)
 
-	go func() {
-		if err := s.Serve(listener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-			log.Fatalf("failed to serve: %v", err)
-		}
-	}()
-
-	ctx, stop := signal.NotifyContext(context.Background(),
-		syscall.SIGINT,
-		syscall.SIGTERM,
-	)
-	defer stop()
-
-	<-ctx.Done()
-
-	slog.Info("shutting down")
-
-	s.GracefulStop()
+	if err := s.Serve(listener); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
 }
