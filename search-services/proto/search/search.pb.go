@@ -78,6 +78,7 @@ type Comics struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Url           string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	Score         int64                  `protobuf:"varint,3,opt,name=score,proto3" json:"score,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -124,6 +125,13 @@ func (x *Comics) GetUrl() string {
 		return x.Url
 	}
 	return ""
+}
+
+func (x *Comics) GetScore() int64 {
+	if x != nil {
+		return x.Score
+	}
+	return 0
 }
 
 type SearchReply struct {
@@ -177,15 +185,17 @@ const file_proto_search_search_proto_rawDesc = "" +
 	"\x19proto/search/search.proto\x12\x06search\x1a\x1bgoogle/protobuf/empty.proto\"=\n" +
 	"\rSearchRequest\x12\x16\n" +
 	"\x06phrase\x18\x01 \x01(\tR\x06phrase\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x03R\x05limit\"*\n" +
+	"\x05limit\x18\x02 \x01(\x03R\x05limit\"@\n" +
 	"\x06Comics\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url\"5\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\x12\x14\n" +
+	"\x05score\x18\x03 \x01(\x03R\x05score\"5\n" +
 	"\vSearchReply\x12&\n" +
-	"\x06comics\x18\x01 \x03(\v2\x0e.search.ComicsR\x06comics2z\n" +
+	"\x06comics\x18\x01 \x03(\v2\x0e.search.ComicsR\x06comics2\xb7\x01\n" +
 	"\x06Search\x128\n" +
 	"\x04Ping\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\"\x00\x126\n" +
-	"\x06Search\x12\x15.search.SearchRequest\x1a\x13.search.SearchReply\"\x00B\x1fZ\x1dyadro.com/course/proto/searchb\x06proto3"
+	"\x06Search\x12\x15.search.SearchRequest\x1a\x13.search.SearchReply\"\x00\x12;\n" +
+	"\vSearchIndex\x12\x15.search.SearchRequest\x1a\x13.search.SearchReply\"\x00B\x1fZ\x1dyadro.com/course/proto/searchb\x06proto3"
 
 var (
 	file_proto_search_search_proto_rawDescOnce sync.Once
@@ -210,10 +220,12 @@ var file_proto_search_search_proto_depIdxs = []int32{
 	1, // 0: search.SearchReply.comics:type_name -> search.Comics
 	3, // 1: search.Search.Ping:input_type -> google.protobuf.Empty
 	0, // 2: search.Search.Search:input_type -> search.SearchRequest
-	3, // 3: search.Search.Ping:output_type -> google.protobuf.Empty
-	2, // 4: search.Search.Search:output_type -> search.SearchReply
-	3, // [3:5] is the sub-list for method output_type
-	1, // [1:3] is the sub-list for method input_type
+	0, // 3: search.Search.SearchIndex:input_type -> search.SearchRequest
+	3, // 4: search.Search.Ping:output_type -> google.protobuf.Empty
+	2, // 5: search.Search.Search:output_type -> search.SearchReply
+	2, // 6: search.Search.SearchIndex:output_type -> search.SearchReply
+	4, // [4:7] is the sub-list for method output_type
+	1, // [1:4] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
 	1, // [1:1] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name

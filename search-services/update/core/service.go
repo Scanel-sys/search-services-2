@@ -96,7 +96,7 @@ func (s *Service) Update(ctx context.Context) (err error) {
 	s.log.Debug("added new comics", "count", added)
 
 	if errorsFound {
-		return fmt.Errorf("failed to process some comics")
+		return fmt.Errorf("failed to fetch/store some comics")
 	}
 
 	return nil

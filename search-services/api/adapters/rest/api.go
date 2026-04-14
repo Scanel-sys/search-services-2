@@ -113,8 +113,9 @@ func NewDropHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
 }
 
 type Comics struct {
-	ID  int    `json:"id"`
-	URL string `json:"url"`
+	ID    int    `json:"id"`
+	URL   string `json:"url"`
+	Score int    `json:"score"`
 }
 
 type ComicsReply struct {
@@ -163,7 +164,57 @@ func NewSearchHandler(log *slog.Logger, searcher core.Searcher) http.HandlerFunc
 			Total:  len(comics),
 		}
 		for _, c := range comics {
-			reply.Comics = append(reply.Comics, Comics{ID: c.ID, URL: c.URL})
+			reply.Comics = append(reply.Comics, Comics{ID: c.ID, URL: c.URL, Score: c.Score})
+		}
+
+		if err := encodeReply(w, reply); err != nil {
+			log.Error("cannot encode reply", "error", err)
+		}
+	}
+}
+
+func NewSearchIndexHandler(log *slog.Logger, searcher core.Searcher) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var limit int
+		var err error
+		limitStr := r.URL.Query().Get("limit")
+		if limitStr != "" {
+			limit, err = strconv.Atoi(limitStr)
+			if err != nil {
+				log.Error("wrong limit", "value", limitStr)
+				http.Error(w, "bad limit", http.StatusBadRequest)
+				return
+			}
+			if limit < 0 {
+				log.Error("wrong limit", "value", limit)
+				http.Error(w, "bad limit", http.StatusBadRequest)
+				return
+			}
+		}
+		phrase := r.URL.Query().Get("phrase")
+		if phrase == "" {
+			log.Error("no phrase")
+			http.Error(w, "no phrase", http.StatusBadRequest)
+			return
+		}
+
+		comics, err := searcher.SearchIndex(r.Context(), phrase, limit)
+		if err != nil {
+			if errors.Is(err, core.ErrNotFound) {
+				http.Error(w, "no comics found", http.StatusNotFound)
+				return
+			}
+			log.Error("error while seaching", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		reply := ComicsReply{
+			Comics: make([]Comics, 0, len(comics)),
+			Total:  len(comics),
+		}
+		for _, c := range comics {
+			reply.Comics = append(reply.Comics, Comics{ID: c.ID, URL: c.URL, Score: c.Score})
 		}
 
 		if err := encodeReply(w, reply); err != nil {

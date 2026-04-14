@@ -22,7 +22,6 @@ import (
 )
 
 func main() {
-
 	// config
 	var configPath string
 	flag.StringVar(&configPath, "config", "config.yaml", "server configuration file")
@@ -94,6 +93,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	if err := s.Serve(listener); err != nil {
 		return fmt.Errorf("failed to serve: %v", err)
 	}
+
 	return nil
 }
 

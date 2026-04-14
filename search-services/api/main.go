@@ -27,8 +27,9 @@ func main() {
 	cfg := config.MustLoad(configPath)
 
 	log := mustMakeLogger(cfg.LogLevel)
+
 	if err := run(cfg, log); err != nil {
-		slog.Error("run failed", "error", err)
+		log.Error("server failed", "error", err)
 		os.Exit(1)
 	}
 }
@@ -61,6 +62,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	mux.Handle("GET /api/db/status", rest.NewUpdateStatusHandler(log, updateClient))
 	mux.Handle("DELETE /api/db", rest.NewDropHandler(log, updateClient))
 	mux.Handle("GET /api/search", rest.NewSearchHandler(log, searchClient))
+	mux.Handle("GET /api/isearch", rest.NewSearchIndexHandler(log, searchClient))
 	mux.Handle("GET /api/ping", rest.NewPingHandler(
 		log,
 		map[string]core.Pinger{
@@ -88,11 +90,10 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}()
 
 	log.Info("Running HTTP server", "address", cfg.HTTPConfig.Address)
-	if err := server.ListenAndServe(); err != nil {
-		if !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("server closed unexpectedly: %v", err)
-		}
+	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("server closed unexpectedly: %v", err)
 	}
+
 	return nil
 }
 

@@ -15,6 +15,7 @@ message SearchRequest {
 message Comics {
   int64 id = 1;
   string url = 2;
+  int64 score = 3;
 }
 
 message SearchReply {
@@ -24,4 +25,5 @@ message SearchReply {
 service Search {
   rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty) {}
   rpc Search(SearchRequest) returns (SearchReply) {}
+  rpc SearchIndex(SearchRequest) returns (SearchReply) {}
 }

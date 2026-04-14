@@ -1,3 +1,4 @@
+// Package xkcd is an adapter to xkcd site
 package xkcd
 
 import (
@@ -13,9 +14,11 @@ import (
 	"yadro.com/course/update/core"
 )
 
-const lastPath = "/info.0.json"
-const maxRetries = 5
-const backoff = 1 * time.Second
+const (
+	lastPath   = "/info.0.json"
+	maxRetries = 5
+	backoff    = 1 * time.Second
+)
 
 type Client struct {
 	log    *slog.Logger
